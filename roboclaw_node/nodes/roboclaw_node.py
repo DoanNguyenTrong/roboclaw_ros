@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 from math import pi, cos, sin
+from xml.etree.ElementInclude import include
+from numbers import Number
 
 import diagnostic_msgs
 import diagnostic_updater
@@ -171,14 +173,15 @@ class Node:
         if not version[0]:
             rospy.logwarn("Could not get version from roboclaw")
         else:
-            rospy.logdebug(repr(version[1]))
+            rospy.loginfo(repr(version[1]))
 
         roboclaw.SpeedM1M2(self.address, 0, 0)
         roboclaw.ResetEncoders(self.address)
 
         self.MAX_SPEED = float(rospy.get_param("~max_speed", "2.0"))
-        self.TICKS_PER_METER = float(rospy.get_param("~tick_per_meter", "4342.2"))
+        self.TICKS_PER_METER = float(rospy.get_param("~ticks_per_meter", "4342.2"))
         self.BASE_WIDTH = float(rospy.get_param("~base_width", "0.315"))
+        self.CMD_FREQ = rospy.get_param("~cmd_frequency", 10)
 
         self.encodm = EncoderOdom(self.TICKS_PER_METER, self.BASE_WIDTH)
         self.last_set_speed_time = rospy.get_rostime()
@@ -196,11 +199,11 @@ class Node:
 
     def run(self):
         rospy.loginfo("Starting motor drive")
-        r_time = rospy.Rate(10)
+        r_time = rospy.Rate(self.CMD_FREQ)
         while not rospy.is_shutdown():
 
-            if (rospy.get_rostime() - self.last_set_speed_time).to_sec() > 1:
-                rospy.loginfo("Did not get command for 1 second, stopping")
+            if (rospy.get_rostime() - self.last_set_speed_time).to_sec() > 1./float(self.CMD_FREQ):
+                # rospy.loginfo("Did not get command for 1 second, stopping")
                 try:
                     roboclaw.ForwardM1(self.address, 0)
                     roboclaw.ForwardM2(self.address, 0)
@@ -228,7 +231,7 @@ class Node:
                 rospy.logwarn("ReadEncM2 OSError: %d", e.errno)
                 rospy.logdebug(e)
 
-            if ('enc1' in vars()) and ('enc2' in vars()):
+            if (isinstance(enc1, Number) and isinstance(enc2, Number)):
                 rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
                 self.encodm.update_publish(enc1, enc2)
 
@@ -250,7 +253,7 @@ class Node:
         vr_ticks = int(vr * self.TICKS_PER_METER)  # ticks/s
         vl_ticks = int(vl * self.TICKS_PER_METER)
 
-        rospy.logdebug("vr_ticks:%d vl_ticks: %d", vr_ticks, vl_ticks)
+        rospy.loginfo("vr_ticks:%d vl_ticks: %d", vr_ticks, vl_ticks)
 
         try:
             # This is a hack way to keep a poorly tuned PID from making noise at speed 0
